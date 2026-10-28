@@ -113,8 +113,13 @@ const lsg=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const lss=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const IC={ed:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',rm:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>'};
 const NOW=new Date();
-const S={perfis:{},lanc:{},me:lsg('nd_me'),nome:lsg('nd_nome')||'',mes:ymd(NOW).slice(0,7),f:'casal'};
-const sb=(window.supabase&&/^https?:/.test(SUPABASE_URL))?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
+const S={perfis:{},lanc:{},me:lsg('nd_code')?lsg('nd_me'):null,nome:lsg('nd_nome')||'',mes:ymd(NOW).slice(0,7),f:'casal'};
+let sb=null,CASA='';
+async function sha(t){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function conectar(code){
+  CASA=await sha(code.trim().toLowerCase());
+  sb=(window.supabase&&/^https?:/.test(SUPABASE_URL))?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{global:{headers:{'x-casa':CASA}}}):null;
+}
 
 /* ---------- ciclos (o mês vira no dia do pagamento) ---------- */
 const pad=n=>String(n).padStart(2,'0');
@@ -125,8 +130,7 @@ const cycStart=(ym,dia)=>ym+'-'+pad(effDia(dia,ym));
 const todayS=()=>ymd(new Date());
 const diaOf=k=>S.perfis[k]?(+S.perfis[k].dia||1):1;
 function keepInicio(p,d){const c=cyc(todayS(),d);return p&&p.inicio&&p.inicio<c?p.inicio:c}
-function gasto(k,m){let t=0;for(const l of Object.values(S.lanc)){if(l.quem!==k)continue;const c=cyc(l.data,diaOf(k));if(l.fixo?c<=m:c===m)t+=l.valor}return t}
-function conta(k,m){const p=S.perfis[k],ini=p.inicio||m;if(m<ini)return{sal:0,carry:0};let carry=0,c=ini,n=0;while(c<m&&n++<600){carry+=(+p.salario||0)-gasto(k,c);c=ymAdd(c,1)}return{sal:+p.salario||0,carry}}
+function conta(k){return{sal:+S.perfis[k].salario||0}}
 function rangeLabel(keys){const ds=[...new Set(keys.map(diaOf))];if(ds.length!==1)return 'ciclos individuais';const d=ds[0],a=cycStart(S.mes,d),b=cycStart(ymAdd(S.mes,1),d);const e=new Date(b+'T12:00:00');e.setDate(e.getDate()-1);const f=x=>x.split('-').reverse().slice(0,2).join('/');return f(a)+' a '+f(ymd(e))}
 
 /* ---------- dados (Supabase) ---------- */
@@ -145,14 +149,14 @@ async function put(c,id,o){
   S[c][id]=o;render();
   if(!sb)return;
   const r=c==='perfis'
-    ?await sb.from('perfis').upsert({id,nome:o.nome,salario:o.salario,dia:o.dia||1,inicio:o.inicio||cyc(todayS(),o.dia||1)})
-    :await sb.from('lancamentos').upsert({id,valor:o.valor,cat:o.cat,descricao:o.desc,quem:o.quem,data:o.data,mes:o.mes,fixo:o.fixo});
+    ?await sb.from('perfis').upsert({casa:CASA,id,nome:o.nome,salario:o.salario,dia:o.dia||1,inicio:o.inicio||cyc(todayS(),o.dia||1)},{onConflict:'casa,id'})
+    :await sb.from('lancamentos').upsert({casa:CASA,id,valor:o.valor,cat:o.cat,descricao:o.desc,quem:o.quem,data:o.data,mes:o.mes,fixo:o.fixo},{onConflict:'casa,id'});
   if(r.error){alert('Erro ao salvar: '+r.error.message);load()}
 }
 async function del(c,id){
   delete S[c][id];render();
   if(!sb)return;
-  const r=await sb.from(c==='perfis'?'perfis':'lancamentos').delete().eq('id',id);
+  const r=await sb.from(c==='perfis'?'perfis':'lancamentos').delete().eq('id',id).eq('casa',CASA);
   if(r.error){alert('Erro ao apagar: '+r.error.message);load()}
 }
 
@@ -180,7 +184,9 @@ function pie(tot,items,saldo){
 /* ---------- telas ---------- */
 function loginHTML(){
   return `<div class="login" id="login"><h1>Nós<br>Dois.</h1><p>Cada gasto à vista, os dois no mesmo caminho.</p>
-  ${sb?'':'<div class="warn">Configure SUPABASE_URL e SUPABASE_KEY no topo do script.</div>'}
+  ${/^https?:/.test(SUPABASE_URL)?'':'<div class="warn">Configure SUPABASE_URL e SUPABASE_KEY no topo do script.</div>'}
+  <input class="inp" id="lc" placeholder="Código do casal (inventem um segredo)" value="${esc(lsg('nd_code')||'')}" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <div style="font-size:12px;color:var(--mut);margin:-4px 2px 12px">O código é a chave de vocês: só quem souber vê os dados do casal.</div>
   <input class="inp" id="ln" placeholder="Seu nome" value="${esc(S.nome)}" autocomplete="off">
   <input class="inp mask" id="ls" placeholder="Seu salário (pode editar depois)" inputmode="numeric">
   <input class="inp dia" id="ld" placeholder="Dia que você recebe (1 a 31)" inputmode="numeric" maxlength="2">
@@ -193,8 +199,8 @@ function render(){
   const perfil=S.perfis[S.me],nome=perfil?perfil.nome:S.nome;
   if(S.f!=='casal'&&!S.perfis[S.f])S.f='casal';
   const keys=S.f==='casal'?Object.keys(S.perfis):[S.f];
-  let sal=0,carry=0;keys.forEach(k=>{const c=conta(k,S.mes);sal+=c.sal;carry+=c.carry});
-  const rec=sal+carry;
+  let sal=0;keys.forEach(k=>{sal+=conta(k).sal});
+  const rec=sal;
   const rs=rows(),tot=rs.reduce((s,l)=>s+l.valor,0),saldo=rec-tot;
   const by={};rs.forEach(l=>by[l.cat]=(by[l.cat]||0)+l.valor);
   const items=Object.entries(by).map(([c,v])=>({c,v,col:COL[c]||'#8d99ae'})).sort((a,b)=>b.v-a.v);
@@ -211,7 +217,7 @@ function render(){
   <div class="tabs">${tabs}</div>
   <div class="sum"><div class="box big"><small>Saldo do mês</small><strong>${brl(saldo)}</strong></div>
   <div class="box"><small>Salário</small><strong>${brl(sal)}</strong></div><div class="box"><small>Saiu</small><strong>${brl(tot)}</strong></div></div>
-  ${rec>0?`<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="note"><span>${pct.toFixed(0)}% comprometido</span>${carry?`<span>${carry>0?'Sobrou do mês anterior':'Veio negativo'}: <b>${brl(carry)}</b></span>`:''}</div>`:''}
+  ${rec>0?`<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="note"><span>${pct.toFixed(0)}% comprometido</span></div>`:''}
   ${dia?`<div class="note">${dia}</div>`:'<div style="height:14px"></div>'}
   <div class="card"><h3>Para onde foi</h3>${pie(ptot,slices,saldo)}
   ${slices.map(it=>`<div class="lg"><i class="sw" style="background:${it.col}"></i><span class="n">${it.c==='saldo'?'Saldo livre':CN[it.c]||'Outros'}</span><span class="p">${(it.v/ptot*100).toFixed(0)}%</span><span class="v">${brl(it.v)}</span></div>`).join('')}</div>
@@ -251,7 +257,7 @@ function openConfirm(id){
 }
 function openPerfil(){
   const p=S.perfis[S.me]||{nome:S.nome,salario:''};
-  modal(`<div class="sheet"><h1>${esc(p.nome)}</h1><p>Salário líquido e o dia que cai na conta. A sobra de cada mês passa para o próximo.</p>
+  modal(`<div class="sheet"><h1>${esc(p.nome)}</h1><p>Salário líquido e o dia que cai na conta. O mês vira nesse dia e o salário entra de novo sozinho.</p>
   <input class="val mask" id="ps" placeholder="R$ 0,00" inputmode="numeric" value="${p.salario?brl(+p.salario):''}">
   <input class="inp dia" id="pd" placeholder="Dia que recebe (1 a 31)" inputmode="numeric" maxlength="2" value="${p.dia||''}">
   <h2>Perfis</h2>
@@ -266,11 +272,12 @@ document.addEventListener('click',async e=>{
   if(!t){if(e.target.id==='modal')closeM();return}
   const a=t.dataset.a,v=t.dataset.v;
   if(a==='login'){
+    const cd=$('#lc').value.trim().toLowerCase();if(cd.length<6){$('#lc').focus();alert('O código do casal precisa ter pelo menos 6 caracteres.');return}
     const n=$('#ln').value.trim();if(!n){$('#ln').focus();return}
     const k=slug(n),s=num($('#ls').value);
-    t.disabled=true;
+    t.disabled=true;lss('nd_code',cd);await conectar(cd);
     let ex=null;
-    if(sb){const r=await sb.from('perfis').select('*').eq('id',k).maybeSingle();ex=r.data}
+    if(sb){const r=await sb.from('perfis').select('*').eq('id',k).eq('casa',CASA).maybeSingle();ex=r.data}
     S.me=k;S.nome=n;lss('nd_me',k);lss('nd_nome',n);
     const dgi=Math.min(31,parseInt($('#ld').value,10)||0);S.mesSet=0;
     if(!ex){const d=dgi||1;await put('perfis',k,{nome:n,salario:s,dia:d,inicio:cyc(todayS(),d)})}
@@ -338,12 +345,12 @@ document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault
 
 /* ---------- início ---------- */
 render();
-if(S.me)openStart();
-if(sb){
-  load();
-  sb.channel('nos-dois').on('postgres_changes',{event:'*',schema:'public'},()=>load()).subscribe();
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
-}
+(async()=>{
+  const c=lsg('nd_code');
+  if(c&&S.me){await conectar(c);await load();openStart()}
+  setInterval(()=>{if(sb&&S.me&&!document.hidden&&!sw&&!$('#modal').classList.contains('on'))load()},8000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&sb&&S.me)load()});
+})();
 </script>
 </body>
 </html>
