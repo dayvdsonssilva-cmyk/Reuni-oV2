@@ -220,6 +220,9 @@ function openPerfil(){
   const p=S.perfis[S.me]||{nome:S.nome,salario:''};
   modal(`<div class="sheet"><h1>${esc(p.nome)}</h1><p>Seu salário mensal líquido.</p>
   <input class="val mask" id="ps" placeholder="R$ 0,00" inputmode="numeric" value="${p.salario?brl(+p.salario):''}">
+  <h2>Perfis</h2>
+  ${Object.entries(S.perfis).map(([k,q])=>`<div class="it"><div class="av">${esc(q.nome[0].toUpperCase())}</div><div class="t"><b>${esc(q.nome)}${k===S.me?' (você)':''}</b><small>${S.pask===k?'Apaga também todos os gastos desse perfil':brl(+q.salario||0)}</small></div>${S.pask===k?`<button class="x ask" data-a="pdel" data-v="${k}">confirmar</button>`:`<button class="x ask" style="background:none;color:var(--mut);border:1px solid var(--line)" data-a="pask" data-v="${k}">excluir</button>`}</div>`).join('')}
+  <div style="height:14px"></div>
   <div style="display:flex;flex-direction:column;gap:10px"><button class="btn" data-a="saveperfil">Salvar</button><button class="btn g" data-a="close">Fechar</button><button class="btn g" data-a="sair">Sair</button></div></div>`);
 }
 
@@ -255,7 +258,9 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='mes'){const [y,m]=S.mes.split('-').map(Number);S.mes=ymd(new Date(y,m-1+ +v,1)).slice(0,7);render()}
   else if(a==='f'){S.f=v;render()}
-  else if(a==='perfil')openPerfil();
+  else if(a==='perfil'){S.pask=null;openPerfil()}
+  else if(a==='pask'){S.pask=v;openPerfil()}
+  else if(a==='pdel'){S.pask=null;Object.keys(S.lanc).forEach(i=>{if(S.lanc[i].quem===v)delete S.lanc[i]});await del('perfis',v);if(v===S.me){S.me=null;lss('nd_me','');closeM();$('#main').innerHTML='';render()}else openPerfil()}
   else if(a==='saveperfil'){const s=num($('#ps').value);put('perfis',S.me,{nome:S.perfis[S.me]?S.perfis[S.me].nome:S.nome,salario:s});closeM()}
   else if(a==='sair'){S.me=null;lss('nd_me','');closeM();$('#main').innerHTML='';render()}
 });
