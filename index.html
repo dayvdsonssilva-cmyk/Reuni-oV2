@@ -109,19 +109,36 @@ const NOW=new Date();
 const S={perfis:{},lanc:{},me:lsg('nd_me'),nome:lsg('nd_nome')||'',mes:ymd(NOW).slice(0,7),f:'casal'};
 const sb=(window.supabase&&/^https?:/.test(SUPABASE_URL))?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
 
+/* ---------- ciclos (o mês vira no dia do pagamento) ---------- */
+const pad=n=>String(n).padStart(2,'0');
+const ymAdd=(ym,n)=>{const [y,m]=ym.split('-').map(Number);const d=new Date(y,m-1+n,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)};
+const effDia=(dia,ym)=>{const [y,m]=ym.split('-').map(Number);return Math.min(+dia||1,new Date(y,m,0).getDate())};
+function cyc(date,dia){const [y,m,d]=date.split('-').map(Number);const ym=y+'-'+pad(m);return d>=effDia(dia,ym)?ym:ymAdd(ym,-1)}
+const cycStart=(ym,dia)=>ym+'-'+pad(effDia(dia,ym));
+const todayS=()=>ymd(new Date());
+const diaOf=k=>S.perfis[k]?(+S.perfis[k].dia||1):1;
+function keepInicio(p,d){const c=cyc(todayS(),d);return p&&p.inicio&&p.inicio<c?p.inicio:c}
+function gasto(k,m){let t=0;for(const l of Object.values(S.lanc)){if(l.quem!==k)continue;const c=cyc(l.data,diaOf(k));if(l.fixo?c<=m:c===m)t+=l.valor}return t}
+function conta(k,m){const p=S.perfis[k],ini=p.inicio||m;if(m<ini)return{sal:0,carry:0};let carry=0,c=ini,n=0;while(c<m&&n++<600){carry+=(+p.salario||0)-gasto(k,c);c=ymAdd(c,1)}return{sal:+p.salario||0,carry}}
+function rangeLabel(keys){const ds=[...new Set(keys.map(diaOf))];if(ds.length!==1)return 'ciclos individuais';const d=ds[0],a=cycStart(S.mes,d),b=cycStart(ymAdd(S.mes,1),d);const e=new Date(b+'T12:00:00');e.setDate(e.getDate()-1);const f=x=>x.split('-').reverse().slice(0,2).join('/');return f(a)+' a '+f(ymd(e))}
+
 /* ---------- dados (Supabase) ---------- */
 async function load(){
   if(!sb)return;
   const [p,l]=await Promise.all([sb.from('perfis').select('*'),sb.from('lancamentos').select('*')]);
-  if(p.data){S.perfis={};p.data.forEach(r=>S.perfis[r.id]={nome:r.nome,salario:+r.salario})}
+  if(p.data){S.perfis={};p.data.forEach(r=>S.perfis[r.id]={nome:r.nome,salario:+r.salario,dia:r.dia||1,inicio:r.inicio||''})}
   if(l.data){S.lanc={};l.data.forEach(r=>S.lanc[r.id]={valor:+r.valor,cat:r.cat,desc:r.descricao,quem:r.quem,data:r.data,mes:r.mes,fixo:r.fixo,t:Date.parse(r.created_at)||0})}
+  const mc=S.perfis[S.me]?cyc(todayS(),diaOf(S.me)):ymd(NOW).slice(0,7);
+  if(!S.mesSet||S.mes===S.cur)S.mes=mc;
+  if(S.perfis[S.me])S.mesSet=1;
+  S.cur=mc;
   render();
 }
 async function put(c,id,o){
   S[c][id]=o;render();
   if(!sb)return;
   const r=c==='perfis'
-    ?await sb.from('perfis').upsert({id,nome:o.nome,salario:o.salario})
+    ?await sb.from('perfis').upsert({id,nome:o.nome,salario:o.salario,dia:o.dia||1,inicio:o.inicio||cyc(todayS(),o.dia||1)})
     :await sb.from('lancamentos').upsert({id,valor:o.valor,cat:o.cat,descricao:o.desc,quem:o.quem,data:o.data,mes:o.mes,fixo:o.fixo});
   if(r.error){alert('Erro ao salvar: '+r.error.message);load()}
 }
@@ -135,7 +152,7 @@ async function del(c,id){
 /* ---------- cálculos ---------- */
 function rows(){
   return Object.entries(S.lanc).map(([id,l])=>({id,...l}))
-    .filter(l=>(l.fixo?l.mes<=S.mes:l.mes===S.mes)&&(S.f==='casal'||l.quem===S.f))
+    .filter(l=>{const c=cyc(l.data,diaOf(l.quem));return (l.fixo?c<=S.mes:c===S.mes)&&(S.f==='casal'||l.quem===S.f)})
     .sort((a,b)=>b.data.localeCompare(a.data)||b.t-a.t);
 }
 function mesLabel(){const [y,m]=S.mes.split('-');const s=new Date(+y,+m-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});return s[0].toUpperCase()+s.slice(1)}
@@ -159,6 +176,7 @@ function loginHTML(){
   ${sb?'':'<div class="warn">Configure SUPABASE_URL e SUPABASE_KEY no topo do script.</div>'}
   <input class="inp" id="ln" placeholder="Seu nome" value="${esc(S.nome)}" autocomplete="off">
   <input class="inp mask" id="ls" placeholder="Seu salário (pode editar depois)" inputmode="numeric">
+  <input class="inp dia" id="ld" placeholder="Dia que você recebe (1 a 31)" inputmode="numeric" maxlength="2">
   <button class="btn" data-a="login">Entrar</button></div>`;
 }
 
@@ -168,23 +186,25 @@ function render(){
   const perfil=S.perfis[S.me],nome=perfil?perfil.nome:S.nome;
   if(S.f!=='casal'&&!S.perfis[S.f])S.f='casal';
   const keys=S.f==='casal'?Object.keys(S.perfis):[S.f];
-  const rec=keys.reduce((s,k)=>s+(+S.perfis[k].salario||0),0);
+  let sal=0,carry=0;keys.forEach(k=>{const c=conta(k,S.mes);sal+=c.sal;carry+=c.carry});
+  const rec=sal+carry;
   const rs=rows(),tot=rs.reduce((s,l)=>s+l.valor,0),saldo=rec-tot;
   const by={};rs.forEach(l=>by[l.cat]=(by[l.cat]||0)+l.valor);
   const items=Object.entries(by).map(([c,v])=>({c,v,col:COL[c]||'#8d99ae'})).sort((a,b)=>b.v-a.v);
   const sobra=Math.max(0,rec-tot),slices=sobra>0?[...items,{c:'saldo',v:sobra,col:'#fafafa'}]:items,ptot=slices.reduce((s,x)=>s+x.v,0);
   const pct=rec>0?Math.min(100,tot/rec*100):0;
   let dia='';
-  if(S.mes===ymd(NOW).slice(0,7)&&saldo>0){const dm=new Date(NOW.getFullYear(),NOW.getMonth()+1,0).getDate();dia=`<span>Pode gastar por dia</span><b>${brl(saldo/(dm-NOW.getDate()+1))}</b>`}
+  const md=diaOf(S.me);
+  if(S.mes===cyc(todayS(),md)&&saldo>0){const fim=new Date(cycStart(ymAdd(S.mes,1),md)+'T00:00:00'),h=new Date();h.setHours(0,0,0,0);const dd=Math.max(1,Math.round((fim-h)/864e5));dia=`<span>Pode gastar por dia</span><b>${brl(saldo/dd)}</b>`}
   const tabs=['casal',...Object.keys(S.perfis)].map(k=>`<button class="${S.f===k?'on':''}" data-a="f" data-v="${k}">${k==='casal'?'Casal':esc(S.perfis[k].nome)}</button>`).join('');
   M.innerHTML=`
   <div class="top"><div class="hi">Olá,<b>${esc(nome)}</b></div><button class="pill" data-a="perfil">Perfil</button></div>
   ${!perfil||!perfil.salario?'<button class="warn" data-a="perfil">Defina seu salário para ver o saldo →</button>':''}
-  <div class="mes"><button data-a="mes" data-v="-1">‹</button><b>${mesLabel()}</b><button data-a="mes" data-v="1">›</button></div>
+  <div class="mes"><button data-a="mes" data-v="-1">‹</button><div style="text-align:center"><b>${mesLabel()}</b><div style="font-size:12px;color:var(--mut);margin-top:2px">${rangeLabel(keys)}</div></div><button data-a="mes" data-v="1">›</button></div>
   <div class="tabs">${tabs}</div>
   <div class="sum"><div class="box big"><small>Saldo do mês</small><strong>${brl(saldo)}</strong></div>
-  <div class="box"><small>Entrou</small><strong>${brl(rec)}</strong></div><div class="box"><small>Saiu</small><strong>${brl(tot)}</strong></div></div>
-  ${rec>0?`<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="note"><span>${pct.toFixed(0)}% da renda comprometida</span></div>`:''}
+  <div class="box"><small>Salário</small><strong>${brl(sal)}</strong></div><div class="box"><small>Saiu</small><strong>${brl(tot)}</strong></div></div>
+  ${rec>0?`<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="note"><span>${pct.toFixed(0)}% comprometido</span>${carry?`<span>${carry>0?'Sobrou do mês anterior':'Veio negativo'}: <b>${brl(carry)}</b></span>`:''}</div>`:''}
   ${dia?`<div class="note">${dia}</div>`:'<div style="height:14px"></div>'}
   <div class="card"><h3>Para onde foi</h3>${pie(ptot,slices,saldo)}
   ${slices.map(it=>`<div class="lg"><i class="sw" style="background:${it.col}"></i><span class="n">${it.c==='saldo'?'Saldo livre':CN[it.c]||'Outros'}</span><span class="p">${(it.v/ptot*100).toFixed(0)}%</span><span class="v">${brl(it.v)}</span></div>`).join('')}</div>
@@ -218,8 +238,9 @@ function openAdd(){
 }
 function openPerfil(){
   const p=S.perfis[S.me]||{nome:S.nome,salario:''};
-  modal(`<div class="sheet"><h1>${esc(p.nome)}</h1><p>Seu salário mensal líquido.</p>
+  modal(`<div class="sheet"><h1>${esc(p.nome)}</h1><p>Salário líquido e o dia que cai na conta. A sobra de cada mês passa para o próximo.</p>
   <input class="val mask" id="ps" placeholder="R$ 0,00" inputmode="numeric" value="${p.salario?brl(+p.salario):''}">
+  <input class="inp dia" id="pd" placeholder="Dia que recebe (1 a 31)" inputmode="numeric" maxlength="2" value="${p.dia||''}">
   <h2>Perfis</h2>
   ${Object.entries(S.perfis).map(([k,q])=>`<div class="it"><div class="av">${esc(q.nome[0].toUpperCase())}</div><div class="t"><b>${esc(q.nome)}${k===S.me?' (você)':''}</b><small>${S.pask===k?'Apaga também todos os gastos desse perfil':brl(+q.salario||0)}</small></div>${S.pask===k?`<button class="x ask" data-a="pdel" data-v="${k}">confirmar</button>`:`<button class="x ask" style="background:none;color:var(--mut);border:1px solid var(--line)" data-a="pask" data-v="${k}">excluir</button>`}</div>`).join('')}
   <div style="height:14px"></div>
@@ -238,8 +259,9 @@ document.addEventListener('click',async e=>{
     let ex=null;
     if(sb){const r=await sb.from('perfis').select('*').eq('id',k).maybeSingle();ex=r.data}
     S.me=k;S.nome=n;lss('nd_me',k);lss('nd_nome',n);
-    if(!ex)await put('perfis',k,{nome:n,salario:s});
-    else if(s>0)await put('perfis',k,{nome:ex.nome,salario:s});
+    const dgi=Math.min(31,parseInt($('#ld').value,10)||0);S.mesSet=0;
+    if(!ex){const d=dgi||1;await put('perfis',k,{nome:n,salario:s,dia:d,inicio:cyc(todayS(),d)})}
+    else if(s>0||dgi){const d=dgi||ex.dia||1;await put('perfis',k,{nome:ex.nome,salario:s>0?s:+ex.salario,dia:d,inicio:keepInicio(ex,d)})}
     S.f='casal';await load();render();openStart();
   }
   else if(a==='add')openAdd();
@@ -261,10 +283,10 @@ document.addEventListener('click',async e=>{
   else if(a==='perfil'){S.pask=null;openPerfil()}
   else if(a==='pask'){S.pask=v;openPerfil()}
   else if(a==='pdel'){S.pask=null;Object.keys(S.lanc).forEach(i=>{if(S.lanc[i].quem===v)delete S.lanc[i]});await del('perfis',v);if(v===S.me){S.me=null;lss('nd_me','');closeM();$('#main').innerHTML='';render()}else openPerfil()}
-  else if(a==='saveperfil'){const s=num($('#ps').value);put('perfis',S.me,{nome:S.perfis[S.me]?S.perfis[S.me].nome:S.nome,salario:s});closeM()}
+  else if(a==='saveperfil'){const s=num($('#ps').value),ex=S.perfis[S.me]||{},d=Math.min(31,Math.max(1,parseInt($('#pd').value,10)||ex.dia||1));await put('perfis',S.me,{nome:ex.nome||S.nome,salario:s,dia:d,inicio:keepInicio(ex,d)});S.mesSet=0;await load();closeM()}
   else if(a==='sair'){S.me=null;lss('nd_me','');closeM();$('#main').innerHTML='';render()}
 });
-document.addEventListener('input',e=>{const t=e.target;if(t.classList&&t.classList.contains('mask')){const d=t.value.replace(/\D/g,'');t.value=d?brl(parseInt(d,10)/100):''}});
+document.addEventListener('input',e=>{const t=e.target;if(t.classList&&t.classList.contains('dia')){let v=t.value.replace(/\D/g,'').slice(0,2);if(+v>31)v='31';t.value=v}if(t.classList&&t.classList.contains('mask')){const d=t.value.replace(/\D/g,'');t.value=d?brl(parseInt(d,10)/100):''}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('#login'))document.querySelector('[data-a=login]').click()});
 
 /* ---------- sem zoom: a página só rola ---------- */
