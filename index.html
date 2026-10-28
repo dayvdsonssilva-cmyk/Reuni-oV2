@@ -258,6 +258,7 @@ function openConfirm(id){
 function openPerfil(){
   const p=S.perfis[S.me]||{nome:S.nome,salario:''};
   modal(`<div class="sheet"><h1>${esc(p.nome)}</h1><p>Salário líquido e o dia que cai na conta. O mês vira nesse dia e o salário entra de novo sozinho.</p>
+  <div class="warn" style="margin-bottom:12px">Código do casal: <b>${esc(lsg('nd_code')||'')}</b></div>
   <input class="val mask" id="ps" placeholder="R$ 0,00" inputmode="numeric" value="${p.salario?brl(+p.salario):''}">
   <input class="inp dia" id="pd" placeholder="Dia que recebe (1 a 31)" inputmode="numeric" maxlength="2" value="${p.dia||''}">
   <h2>Perfis</h2>
@@ -274,10 +275,20 @@ document.addEventListener('click',async e=>{
   if(a==='login'){
     const cd=$('#lc').value.trim().toLowerCase();if(cd.length<6){$('#lc').focus();alert('O código do casal precisa ter pelo menos 6 caracteres.');return}
     const n=$('#ln').value.trim();if(!n){$('#ln').focus();return}
-    const k=slug(n),s=num($('#ls').value);
+    let k=slug(n);const s=num($('#ls').value);
     t.disabled=true;lss('nd_code',cd);await conectar(cd);
-    let ex=null;
-    if(sb){const r=await sb.from('perfis').select('*').eq('id',k).eq('casa',CASA).maybeSingle();ex=r.data}
+    let ex=null,list=[];
+    if(sb){
+      const r=await sb.from('perfis').select('*');
+      if(r.error){alert('Não consegui conectar: '+r.error.message);t.disabled=false;return}
+      list=r.data||[];ex=list.find(x=>x.id===k||slug(x.nome)===k)||null;
+    }
+    if(ex)k=ex.id;
+    else{
+      const nomes=list.map(x=>x.nome);
+      const msg=nomes.length?'Não existe o perfil "'+n+'" neste código. Já existem: '+nomes.join(', ')+'.\n\nCriar um perfil novo com esse nome?':'Esse código ainda não tem nenhum perfil.\n\nCriar um casal novo com este código? (se você já usava o app, confira se o código está igual ao de antes)';
+      if(!confirm(msg)){t.disabled=false;return}
+    }
     S.me=k;S.nome=n;lss('nd_me',k);lss('nd_nome',n);
     const dgi=Math.min(31,parseInt($('#ld').value,10)||0);S.mesSet=0;
     if(!ex){const d=dgi||1;await put('perfis',k,{nome:n,salario:s,dia:d,inicio:cyc(todayS(),d)})}
