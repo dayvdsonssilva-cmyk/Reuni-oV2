@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0a0a0a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -13,8 +13,9 @@
 <style>
 :root{--bg:#0a0a0a;--fg:#fafafa;--mut:rgba(250,250,250,.52);--line:rgba(250,250,250,.15);--card:#151515;color-scheme:dark;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--fg);font-family:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:pan-y}
+.tabs{touch-action:pan-x pan-y}
+html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden;overscroll-behavior-x:none;margin:0;background:var(--bg);color:var(--fg);font-family:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums}
 button,input{font:inherit;color:inherit}
 button{cursor:pointer;background:none;border:0}
 #main{max-width:480px;margin:0 auto;padding:20px 18px 120px}
@@ -260,6 +261,10 @@ document.addEventListener('click',async e=>{
 });
 document.addEventListener('input',e=>{const t=e.target;if(t.classList&&t.classList.contains('mask')){const d=t.value.replace(/\D/g,'');t.value=d?brl(parseInt(d,10)/100):''}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('#login'))document.querySelector('[data-a=login]').click()});
+
+/* ---------- sem zoom: a página só rola ---------- */
+['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
+document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
 
 /* ---------- início ---------- */
 render();
