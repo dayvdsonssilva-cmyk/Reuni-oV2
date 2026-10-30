@@ -61,6 +61,10 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);
 .acts{position:absolute;left:0;top:0;bottom:0;width:132px;display:flex}
 .acts button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:500;color:#fff}
 .acts .ed{background:#3a3a3c}.acts .rm{background:#ff3b30}
+.lbl{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:2px 0 10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.edcat{border:1.5px solid var(--fg);color:var(--fg);border-radius:99px;padding:8px 14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+#modal{touch-action:none;overscroll-behavior:contain}
+.sheet{overscroll-behavior:contain;touch-action:pan-y}
 .crow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .crow .inp{margin:0;flex:1}
 .crow input[type=color]{width:42px;height:42px;border:1px solid var(--line);border-radius:12px;background:none;padding:2px;flex:none}
@@ -227,7 +231,7 @@ function render(){
   <div class="box"><small>Salário</small><strong>${brl(sal)}</strong></div><div class="box"><small>Saiu</small><strong>${brl(tot)}</strong></div></div>
   ${rec>0?`<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="note"><span>${pct.toFixed(0)}% comprometido</span></div>`:''}
   ${dia?`<div class="note">${dia}</div>`:'<div style="height:14px"></div>'}
-  <div class="card"><h3>Para onde foi</h3>${pie(ptot,slices,saldo)}
+  <div class="card"><div class="lbl" style="margin:0 0 6px"><h3 style="margin:0">Para onde foi</h3><button class="edcat" data-a="cats" data-v="main">✎ Categorias</button></div>${pie(ptot,slices,saldo)}
   ${slices.map(it=>`<div class="lg"><i class="sw" style="background:${it.col}"></i><span class="n">${it.c==='saldo'?'Saldo livre':CN[it.c]||'Outros'}</span><span class="p">${(it.v/ptot*100).toFixed(0)}%</span><span class="v">${brl(it.v)}</span></div>`).join('')}</div>
   <h2>Lançamentos<span style="text-transform:none;letter-spacing:0;opacity:.8">${ro?' · só leitura — lance na conta de cada um':' · deslize para o lado'}</span></h2>
   ${rs.length?rs.map(l=>{const q=S.perfis[l.quem];const nm=q?q.nome:'?';const d=l.data.split('-');
@@ -235,8 +239,11 @@ function render(){
   ${ro?'':'<button class="fab" data-a="add" aria-label="Novo gasto">+</button>'}`;
 }
 
-function modal(h){const m=$('#modal');m.innerHTML=h;m.classList.add('on')}
-function closeM(){$('#modal').classList.remove('on')}
+let _ly=null;
+function lockScroll(){if(_ly!==null)return;_ly=window.scrollY||document.documentElement.scrollTop||0;const b=document.body.style;b.position='fixed';b.top='-'+_ly+'px';b.left='0';b.right='0';b.width='100%'}
+function unlockScroll(){if(_ly===null)return;const y=_ly;_ly=null;const b=document.body.style;b.position='';b.top='';b.left='';b.right='';b.width='';window.scrollTo(0,y)}
+function modal(h){const m=$('#modal');m.innerHTML=h;m.classList.add('on');lockScroll()}
+function closeM(){$('#modal').classList.remove('on');unlockScroll()}
 
 function openStart(msg){
   modal(`<div class="sheet"><h1>${msg||'Gastou algo?'}</h1><p>${msg?'Quer lançar mais alguma coisa?':'Lance agora, remova um lançamento ou só olhe o painel.'}</p>
@@ -260,8 +267,8 @@ function openAdd(l){
   S.editId=l?l.id:null;
   modal(`<div class="sheet"><h1>${l?'Editar gasto':'Novo gasto'}</h1><p>${l?'Altere o que precisar e salve.':(S.perfis[S.f]&&S.f!==S.me?'Lançando na conta de '+esc(S.perfis[S.f].nome)+'.':'Ou toque em cancelar para só ver os gráficos.')}</p>
   <input class="val mask" id="av" placeholder="R$ 0,00" inputmode="numeric" autocomplete="off" value="${l?brl(l.valor):''}">
+  <div class="lbl"><span>Categoria</span><button class="edcat" data-a="cats" data-v="add">✎ Editar categorias</button></div>
   <div class="chips" id="cc" data-c="${l?l.cat:''}">${CATS.map(([k,n])=>`<button class="${l&&l.cat===k?'on':''}" data-a="cat" data-v="${k}">${n}</button>`).join('')}</div>
-  <button class="pill" style="margin:-4px 0 14px" data-a="cats" data-v="add">Editar categorias</button>
   <input class="inp" id="ad" placeholder="Descrição (opcional)" autocomplete="off" value="${l?esc(l.desc||''):''}">
   <input class="inp" id="at" type="date" value="${l?l.data:ymd(NOW)}">
   <div class="tg"><span>Repete todo mês (aluguel, parcela…)</span><button class="sw2${l&&l.fixo?' on':''}" id="af" data-a="fixo" aria-label="Repetir"></button></div>
@@ -320,7 +327,7 @@ document.addEventListener('click',async e=>{
   else if(a==='cats'){S.ed=null;openCats(v)}
   else if(a==='cdel'){S.ed.splice(+v,1);openCats()}
   else if(a==='cnew'){S.ed.push({id:'c'+Date.now().toString(36),nome:'',cor:PAL[S.ed.length%PAL.length]});openCats();const ins=document.querySelectorAll('[data-cn]');ins[ins.length-1].focus()}
-  else if(a==='ccancel'){S.ed=null;if(S.catFrom==='add')openAdd();else openPerfil()}
+  else if(a==='ccancel'){S.ed=null;if(S.catFrom==='add')openAdd();else if(S.catFrom==='main')closeM();else openPerfil()}
   else if(a==='csave'){
     const lista=S.ed.map(c=>({...c,nome:c.nome.trim()})).filter(c=>c.nome);
     if(!lista.length){alert('Mantenha pelo menos uma categoria.');return}
