@@ -61,6 +61,10 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);
 .acts{position:absolute;left:0;top:0;bottom:0;width:132px;display:flex}
 .acts button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:500;color:#fff}
 .acts .ed{background:#3a3a3c}.acts .rm{background:#ff3b30}
+.crow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.crow .inp{margin:0;flex:1}
+.crow input[type=color]{width:42px;height:42px;border:1px solid var(--line);border-radius:12px;background:none;padding:2px;flex:none}
+.rowro{border-top:1px solid var(--line)}.rowro .it{border-top:0}
 .empty{color:var(--mut);font-size:14px;text-align:center;padding:26px 0}
 .fab{position:fixed;right:max(18px,calc(50% - 222px));bottom:calc(22px + env(safe-area-inset-bottom,0px));width:62px;height:62px;border-radius:50%;background:var(--fg);color:var(--bg);font-size:30px;box-shadow:0 8px 30px rgba(0,0,0,.45)}
 #modal{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.6);z-index:20}
@@ -100,9 +104,10 @@ const SUPABASE_URL='https://jwhrbtnsnlvscoiswpyd.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3aHJidG5zbmx2c2NvaXN3cHlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MDM0MzksImV4cCI6MjEwODE3OTQzOX0.wE-TVepKgqAfMIghil1Tqgdxo6dRBNKCVr2kS_xgCjo';
 /* ================================================================ */
 
-const CATS=[["cartao","Cartão de crédito"],["financ","Casa financiada"],["aluguel","Casa alugada"],["mercado","Mercado"],["contas","Contas da casa"],["transp","Transporte"],["pessoal","Gastos pessoais"],["lazer","Lazer"],["invest","Investimento"],["outros","Outros"]];
-const CN=Object.fromEntries(CATS);
-const COL={cartao:'#ff4d6d',financ:'#ff9f1c',aluguel:'#ffd23f',mercado:'#3ddc97',contas:'#2ec4b6',transp:'#4ea8ff',pessoal:'#9b7bff',lazer:'#ff7ad9',invest:'#c6f432',outros:'#8d99ae'};
+const DEF=[["cartao","Cartão de crédito","#ff4d6d"],["financ","Casa financiada","#ff9f1c"],["aluguel","Casa alugada","#ffd23f"],["mercado","Mercado","#3ddc97"],["contas","Contas da casa","#2ec4b6"],["transp","Transporte","#4ea8ff"],["pessoal","Gastos pessoais","#9b7bff"],["lazer","Lazer","#ff7ad9"],["invest","Investimento","#c6f432"],["outros","Outros","#8d99ae"]].map(([id,nome,cor])=>({id,nome,cor}));
+const PAL=['#ff4d6d','#ff9f1c','#ffd23f','#3ddc97','#2ec4b6','#4ea8ff','#9b7bff','#ff7ad9','#c6f432','#8d99ae','#e0e0e0'];
+let CATS=[],CN={},COL={};
+function rebuildCats(){const l=S.cats&&S.cats.length?S.cats:DEF;CATS=l.map(c=>[c.id,c.nome]);CN={};COL={};l.forEach(c=>{CN[c.id]=c.nome;COL[c.id]=c.cor})}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const slug=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'x';
@@ -113,7 +118,8 @@ const lsg=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const lss=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const IC={ed:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',rm:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>'};
 const NOW=new Date();
-const S={perfis:{},lanc:{},me:lsg('nd_code')?lsg('nd_me'):null,nome:lsg('nd_nome')||'',mes:ymd(NOW).slice(0,7),f:'casal'};
+const S={perfis:{},lanc:{},me:lsg('nd_code')?lsg('nd_me'):null,nome:lsg('nd_nome')||'',mes:ymd(NOW).slice(0,7),f:'casal',cats:[]};
+rebuildCats();
 let sb=null,CASA='';
 async function sha(t){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 async function conectar(code){
@@ -136,9 +142,10 @@ function rangeLabel(keys){const ds=[...new Set(keys.map(diaOf))];if(ds.length!==
 /* ---------- dados (Supabase) ---------- */
 async function load(){
   if(!sb)return;
-  const [p,l]=await Promise.all([sb.from('perfis').select('*'),sb.from('lancamentos').select('*')]);
+  const [p,l,ct]=await Promise.all([sb.from('perfis').select('*'),sb.from('lancamentos').select('*'),sb.from('categorias').select('*')]);
   if(p.data){S.perfis={};p.data.forEach(r=>S.perfis[r.id]={nome:r.nome,salario:+r.salario,dia:r.dia||1,inicio:r.inicio||''})}
   if(l.data){S.lanc={};l.data.forEach(r=>S.lanc[r.id]={valor:+r.valor,cat:r.cat,desc:r.descricao,quem:r.quem,data:r.data,mes:r.mes,fixo:r.fixo,t:Date.parse(r.created_at)||0})}
+  if(ct&&ct.data){S.cats=ct.data.sort((a,b)=>a.ordem-b.ordem).map(r=>({id:r.id,nome:r.nome,cor:r.cor}));rebuildCats()}
   const mc=S.perfis[S.me]?cyc(todayS(),diaOf(S.me)):ymd(NOW).slice(0,7);
   if(!S.mesSet||S.mes===S.cur)S.mes=mc;
   if(S.perfis[S.me])S.mesSet=1;
@@ -199,6 +206,7 @@ function render(){
   const perfil=S.perfis[S.me],nome=perfil?perfil.nome:S.nome;
   if(S.f!=='casal'&&!S.perfis[S.f])S.f='casal';
   const keys=S.f==='casal'?Object.keys(S.perfis):[S.f];
+  const ro=S.f==='casal';
   let sal=0;keys.forEach(k=>{sal+=conta(k).sal});
   const rec=sal;
   const rs=rows(),tot=rs.reduce((s,l)=>s+l.valor,0),saldo=rec-tot;
@@ -221,10 +229,10 @@ function render(){
   ${dia?`<div class="note">${dia}</div>`:'<div style="height:14px"></div>'}
   <div class="card"><h3>Para onde foi</h3>${pie(ptot,slices,saldo)}
   ${slices.map(it=>`<div class="lg"><i class="sw" style="background:${it.col}"></i><span class="n">${it.c==='saldo'?'Saldo livre':CN[it.c]||'Outros'}</span><span class="p">${(it.v/ptot*100).toFixed(0)}%</span><span class="v">${brl(it.v)}</span></div>`).join('')}</div>
-  <h2>Lançamentos<span style="text-transform:none;letter-spacing:0;opacity:.8"> · deslize para o lado</span></h2>
+  <h2>Lançamentos<span style="text-transform:none;letter-spacing:0;opacity:.8">${ro?' · só leitura — lance na conta de cada um':' · deslize para o lado'}</span></h2>
   ${rs.length?rs.map(l=>{const q=S.perfis[l.quem];const nm=q?q.nome:'?';const d=l.data.split('-');
-    return `<div class="swr${S.openId===l.id?' open':''}" data-id="${l.id}"><div class="acts"><button class="ed" data-a="editb" data-v="${l.id}" aria-label="Editar">${IC.ed}<span>Editar</span></button><button class="rm" data-a="askdel" data-v="${l.id}" aria-label="Excluir">${IC.rm}<span>Excluir</span></button></div><div class="it" data-a="edit" data-v="${l.id}"><div class="av">${esc(nm[0].toUpperCase())}</div><div class="t"><b>${esc(l.desc||CN[l.cat]||'Gasto')}</b><small>${CN[l.cat]||''} · ${d[2]}/${d[1]}${l.fixo?' · todo mês':''}</small></div><div class="v">${brl(l.valor)}</div></div></div>`}).join(''):'<div class="empty">Nada lançado neste mês ainda.</div>'}
-  <button class="fab" data-a="add" aria-label="Novo gasto">+</button>`;
+    return `<div class="${ro?'rowro':'swr'+(S.openId===l.id?' open':'')}" data-id="${l.id}">${ro?'':`<div class="acts"><button class="ed" data-a="editb" data-v="${l.id}" aria-label="Editar">${IC.ed}<span>Editar</span></button><button class="rm" data-a="askdel" data-v="${l.id}" aria-label="Excluir">${IC.rm}<span>Excluir</span></button></div>`}<div class="it"${ro?'':` data-a="edit" data-v="${l.id}"`}><div class="av">${esc(nm[0].toUpperCase())}</div><div class="t"><b>${esc(l.desc||CN[l.cat]||'Gasto')}</b><small>${CN[l.cat]||'Sem categoria'} · ${d[2]}/${d[1]}${l.fixo?' · todo mês':''}</small></div><div class="v">${brl(l.valor)}</div></div></div>`}).join(''):'<div class="empty">Nada lançado neste mês ainda.</div>'}
+  ${ro?'':'<button class="fab" data-a="add" aria-label="Novo gasto">+</button>'}`;
 }
 
 function modal(h){const m=$('#modal');m.innerHTML=h;m.classList.add('on')}
@@ -240,11 +248,20 @@ function openRemove(){
   ${rs.length?rs.map(l=>`<div class="it"><div class="t"><b>${esc(l.desc||CN[l.cat]||'Gasto')}</b><small>${CN[l.cat]||''} · ${l.data.split('-').reverse().slice(0,2).join('/')}${l.fixo?' · todo mês':''}</small></div><div class="v">${brl(l.valor)}</div><button class="x ask" data-a="rdel" data-v="${l.id}">apagar</button></div>`).join(''):'<div class="empty">Nada para remover neste mês.</div>'}
   <div style="height:12px"></div><button class="btn g" data-a="start">Voltar</button></div>`);
 }
+function openCats(from){
+  S.catFrom=from||S.catFrom||'perfil';
+  if(!S.ed)S.ed=(S.cats.length?S.cats:DEF).map(c=>({...c}));
+  modal(`<div class="sheet"><h1>Categorias</h1><p>Renomeie, troque a cor, apague ou crie novas. Gastos de categorias apagadas ficam sem categoria.</p>
+  ${S.ed.map((c,i)=>`<div class="crow"><input type="color" value="${c.cor}" data-ci="${i}"><input class="inp" value="${esc(c.nome)}" placeholder="Nome" data-cn="${i}" autocomplete="off"><button class="x" data-a="cdel" data-v="${i}" aria-label="Apagar">×</button></div>`).join('')}
+  <button class="btn g" data-a="cnew" style="margin:6px 0 14px">+ Nova categoria</button>
+  <div class="row"><button class="btn g" data-a="ccancel">Cancelar</button><button class="btn" data-a="csave">Salvar</button></div></div>`);
+}
 function openAdd(l){
   S.editId=l?l.id:null;
-  modal(`<div class="sheet"><h1>${l?'Editar gasto':'Novo gasto'}</h1><p>${l?'Altere o que precisar e salve.':'Ou toque em cancelar para só ver os gráficos.'}</p>
+  modal(`<div class="sheet"><h1>${l?'Editar gasto':'Novo gasto'}</h1><p>${l?'Altere o que precisar e salve.':(S.perfis[S.f]&&S.f!==S.me?'Lançando na conta de '+esc(S.perfis[S.f].nome)+'.':'Ou toque em cancelar para só ver os gráficos.')}</p>
   <input class="val mask" id="av" placeholder="R$ 0,00" inputmode="numeric" autocomplete="off" value="${l?brl(l.valor):''}">
   <div class="chips" id="cc" data-c="${l?l.cat:''}">${CATS.map(([k,n])=>`<button class="${l&&l.cat===k?'on':''}" data-a="cat" data-v="${k}">${n}</button>`).join('')}</div>
+  <button class="pill" style="margin:-4px 0 14px" data-a="cats" data-v="add">Editar categorias</button>
   <input class="inp" id="ad" placeholder="Descrição (opcional)" autocomplete="off" value="${l?esc(l.desc||''):''}">
   <input class="inp" id="at" type="date" value="${l?l.data:ymd(NOW)}">
   <div class="tg"><span>Repete todo mês (aluguel, parcela…)</span><button class="sw2${l&&l.fixo?' on':''}" id="af" data-a="fixo" aria-label="Repetir"></button></div>
@@ -264,7 +281,7 @@ function openPerfil(){
   <h2>Perfis</h2>
   ${Object.entries(S.perfis).map(([k,q])=>`<div class="it"><div class="av">${esc(q.nome[0].toUpperCase())}</div><div class="t"><b>${esc(q.nome)}${k===S.me?' (você)':''}</b><small>${S.pask===k?'Apaga também todos os gastos desse perfil':brl(+q.salario||0)}</small></div>${S.pask===k?`<button class="x ask" data-a="pdel" data-v="${k}">confirmar</button>`:`<button class="x ask" style="background:none;color:var(--mut);border:1px solid var(--line)" data-a="pask" data-v="${k}">excluir</button>`}</div>`).join('')}
   <div style="height:14px"></div>
-  <div style="display:flex;flex-direction:column;gap:10px"><button class="btn" data-a="saveperfil">Salvar</button><button class="btn g" data-a="close">Fechar</button><button class="btn g" data-a="sair">Sair</button></div></div>`);
+  <div style="display:flex;flex-direction:column;gap:10px"><button class="btn" data-a="saveperfil">Salvar</button><button class="btn g" data-a="cats" data-v="perfil">Editar categorias</button><button class="btn g" data-a="close">Fechar</button><button class="btn g" data-a="sair">Sair</button></div></div>`);
 }
 
 /* ---------- eventos ---------- */
@@ -293,13 +310,32 @@ document.addEventListener('click',async e=>{
     const dgi=Math.min(31,parseInt($('#ld').value,10)||0);S.mesSet=0;
     if(!ex){const d=dgi||1;await put('perfis',k,{nome:n,salario:s,dia:d,inicio:cyc(todayS(),d)})}
     else if(s>0||dgi){const d=dgi||ex.dia||1;await put('perfis',k,{nome:ex.nome,salario:s>0?s:+ex.salario,dia:d,inicio:keepInicio(ex,d)})}
-    S.f='casal';await load();render();openStart();
+    S.f=k;await load();render();openStart();
   }
-  else if(a==='add')openAdd();
+  else if(a==='add'){if(S.f!=='casal')openAdd()}
   else if(a==='edit'){if(S.swiped)return;const r=t.closest('.swr');if(r&&r.classList.contains('open')){r.classList.remove('open');S.openId=null;return}openAdd(S.lanc[v])}
   else if(a==='editb'){S.openId=null;openAdd(S.lanc[v])}
   else if(a==='askdel')openConfirm(v);
   else if(a==='delok'){S.openId=null;await del('lanc',v);closeM()}
+  else if(a==='cats'){S.ed=null;openCats(v)}
+  else if(a==='cdel'){S.ed.splice(+v,1);openCats()}
+  else if(a==='cnew'){S.ed.push({id:'c'+Date.now().toString(36),nome:'',cor:PAL[S.ed.length%PAL.length]});openCats();const ins=document.querySelectorAll('[data-cn]');ins[ins.length-1].focus()}
+  else if(a==='ccancel'){S.ed=null;if(S.catFrom==='add')openAdd();else openPerfil()}
+  else if(a==='csave'){
+    const lista=S.ed.map(c=>({...c,nome:c.nome.trim()})).filter(c=>c.nome);
+    if(!lista.length){alert('Mantenha pelo menos uma categoria.');return}
+    t.disabled=true;
+    const antigos=(S.cats.length?S.cats:DEF).map(c=>c.id);
+    S.cats=lista;rebuildCats();
+    if(sb){
+      const rows=lista.map((c,i)=>({casa:CASA,id:c.id,nome:c.nome,cor:c.cor,ordem:i}));
+      const r=await sb.from('categorias').upsert(rows,{onConflict:'casa,id'});
+      if(r.error){alert('Erro ao salvar categorias: '+r.error.message+' (rodou o migration-categorias.sql?)');await load()}
+      else{const rem=antigos.filter(id=>!lista.some(c=>c.id===id));if(rem.length)await sb.from('categorias').delete().in('id',rem).eq('casa',CASA)}
+    }
+    S.ed=null;render();
+    if(S.catFrom==='add')openAdd();else closeM();
+  }
   else if(a==='rem')openRemove();
   else if(a==='start')openStart();
   else if(a==='rdel'){await del('lanc',v);openRemove()}
@@ -310,7 +346,7 @@ document.addEventListener('click',async e=>{
     const val=num($('#av').value),cat=$('#cc').dataset.c;
     if(!(val>0)||!cat){const i=$('#av');i.classList.remove('err');void i.offsetWidth;i.classList.add('err');if(!cat)$('#cc').scrollIntoView({block:'nearest'});return}
     const dt=$('#at').value||ymd(NOW),old=S.editId?S.lanc[S.editId]:null,id=old?S.editId:Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    put('lanc',id,{valor:val,cat,desc:$('#ad').value.trim(),quem:old?old.quem:S.me,data:dt,mes:dt.slice(0,7),fixo:$('#af').classList.contains('on'),t:old?old.t:Date.now()});
+    put('lanc',id,{valor:val,cat,desc:$('#ad').value.trim(),quem:old?old.quem:(S.f==='casal'?S.me:S.f),data:dt,mes:dt.slice(0,7),fixo:$('#af').classList.contains('on'),t:old?old.t:Date.now()});
     if(old){S.editId=null;closeM()}else openStart('Salvo. Mais algum?');
   }
   else if(a==='mes'){const [y,m]=S.mes.split('-').map(Number);S.mes=ymd(new Date(y,m-1+ +v,1)).slice(0,7);render()}
@@ -321,7 +357,7 @@ document.addEventListener('click',async e=>{
   else if(a==='saveperfil'){const s=num($('#ps').value),ex=S.perfis[S.me]||{},d=Math.min(31,Math.max(1,parseInt($('#pd').value,10)||ex.dia||1));await put('perfis',S.me,{nome:ex.nome||S.nome,salario:s,dia:d,inicio:keepInicio(ex,d)});S.mesSet=0;await load();closeM()}
   else if(a==='sair'){S.me=null;lss('nd_me','');closeM();$('#main').innerHTML='';render()}
 });
-document.addEventListener('input',e=>{const t=e.target;if(t.classList&&t.classList.contains('dia')){let v=t.value.replace(/\D/g,'').slice(0,2);if(+v>31)v='31';t.value=v}if(t.classList&&t.classList.contains('mask')){const d=t.value.replace(/\D/g,'');t.value=d?brl(parseInt(d,10)/100):''}});
+document.addEventListener('input',e=>{const t=e.target;if(S.ed&&t.dataset){if(t.dataset.cn!==undefined)S.ed[+t.dataset.cn].nome=t.value;if(t.dataset.ci!==undefined)S.ed[+t.dataset.ci].cor=t.value}if(t.classList&&t.classList.contains('dia')){let v=t.value.replace(/\D/g,'').slice(0,2);if(+v>31)v='31';t.value=v}if(t.classList&&t.classList.contains('mask')){const d=t.value.replace(/\D/g,'');t.value=d?brl(parseInt(d,10)/100):''}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('#login'))document.querySelector('[data-a=login]').click()});
 
 /* ---------- deslizar o lançamento (editar / excluir) ---------- */
@@ -358,7 +394,7 @@ document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault
 render();
 (async()=>{
   const c=lsg('nd_code');
-  if(c&&S.me){await conectar(c);await load();openStart()}
+  if(c&&S.me){S.f=S.me;await conectar(c);await load();openStart()}
   setInterval(()=>{if(sb&&S.me&&!document.hidden&&!sw&&!$('#modal').classList.contains('on'))load()},8000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&sb&&S.me)load()});
 })();
