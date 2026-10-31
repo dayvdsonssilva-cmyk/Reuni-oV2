@@ -61,6 +61,9 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);
 .acts{position:absolute;left:0;top:0;bottom:0;width:132px;display:flex}
 .acts button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:500;color:#fff}
 .acts .ed{background:#3a3a3c}.acts .rm{background:#ff3b30}
+.hint{font-size:12px;color:var(--mut);margin:-2px 2px 14px;line-height:1.4}.hint b{color:var(--fg)}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input{-webkit-user-select:text;user-select:text}
 .lbl{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:2px 0 10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
 .edcat{border:1.5px solid var(--fg);color:var(--fg);border-radius:99px;padding:8px 14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 #modal{touch-action:none;overscroll-behavior:contain}
@@ -141,6 +144,17 @@ const todayS=()=>ymd(new Date());
 const diaOf=k=>S.perfis[k]?(+S.perfis[k].dia||1):1;
 function keepInicio(p,d){const c=cyc(todayS(),d);return p&&p.inicio&&p.inicio<c?p.inicio:c}
 function conta(k){return{sal:+S.perfis[k].salario||0}}
+const addDays=(s,n)=>{const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return ymd(d)};
+function proxPag(){const q=S.f==='casal'?S.me:S.f,d=diaOf(q),c=cyc(todayS(),d);return cycStart(ymAdd(c,1),d)}
+function dh(){
+  const el=$('#at'),box=$('#dh');if(!el||!box)return;
+  const v=el.value;if(!v){box.textContent='';return}
+  const old=S.editId?S.lanc[S.editId]:null,q=old?old.quem:(S.f==='casal'?S.me:S.f),d=diaOf(q),c=cyc(v,d);
+  const [y,m]=c.split('-').map(Number),nm=new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'long'});
+  const a=cycStart(c,d),b=cycStart(ymAdd(c,1),d),e=new Date(b+'T12:00:00');e.setDate(e.getDate()-1);
+  const f=x=>x.split('-').reverse().slice(0,2).join('/');
+  box.innerHTML='Conta no mês de <b>'+nm[0].toUpperCase()+nm.slice(1)+'</b> ('+f(a)+' a '+f(ymd(e))+')'+(v>todayS()&&!$('#af').classList.contains('on')?' · <b>agendado</b>: ainda não saiu':'');
+}
 function rangeLabel(keys){const ds=[...new Set(keys.map(diaOf))];if(ds.length!==1)return 'ciclos individuais';const d=ds[0],a=cycStart(S.mes,d),b=cycStart(ymAdd(S.mes,1),d);const e=new Date(b+'T12:00:00');e.setDate(e.getDate()-1);const f=x=>x.split('-').reverse().slice(0,2).join('/');return f(a)+' a '+f(ymd(e))}
 
 /* ---------- dados (Supabase) ---------- */
@@ -217,6 +231,7 @@ function render(){
   const by={};rs.forEach(l=>by[l.cat]=(by[l.cat]||0)+l.valor);
   const items=Object.entries(by).map(([c,v])=>({c,v,col:COL[c]||'#8d99ae'})).sort((a,b)=>b.v-a.v);
   const sobra=Math.max(0,rec-tot),slices=sobra>0?[...items,{c:'saldo',v:sobra,col:'#fafafa'}]:items,ptot=slices.reduce((s,x)=>s+x.v,0);
+  const agend=rs.filter(l=>!l.fixo&&l.data>todayS()).reduce((x,l)=>x+l.valor,0);
   const pct=rec>0?Math.min(100,tot/rec*100):0;
   let dia='';
   const md=diaOf(S.me);
@@ -229,13 +244,13 @@ function render(){
   <div class="tabs">${tabs}</div>
   <div class="sum"><div class="box big"><small>Saldo do mês</small><strong>${brl(saldo)}</strong></div>
   <div class="box"><small>Salário</small><strong>${brl(sal)}</strong></div><div class="box"><small>Saiu</small><strong>${brl(tot)}</strong></div></div>
-  ${rec>0?`<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="note"><span>${pct.toFixed(0)}% comprometido</span></div>`:''}
+  ${rec>0?`<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="note"><span>${pct.toFixed(0)}% comprometido</span>${agend>0?`<span>Agendado: <b>${brl(agend)}</b></span>`:''}</div>`:''}
   ${dia?`<div class="note">${dia}</div>`:'<div style="height:14px"></div>'}
   <div class="card"><div class="lbl" style="margin:0 0 6px"><h3 style="margin:0">Para onde foi</h3><button class="edcat" data-a="cats" data-v="main">✎ Categorias</button></div>${pie(ptot,slices,saldo)}
   ${slices.map(it=>`<div class="lg"><i class="sw" style="background:${it.col}"></i><span class="n">${it.c==='saldo'?'Saldo livre':CN[it.c]||'Outros'}</span><span class="p">${(it.v/ptot*100).toFixed(0)}%</span><span class="v">${brl(it.v)}</span></div>`).join('')}</div>
   <h2>Lançamentos<span style="text-transform:none;letter-spacing:0;opacity:.8">${ro?' · só leitura — lance na conta de cada um':' · deslize para o lado'}</span></h2>
   ${rs.length?rs.map(l=>{const q=S.perfis[l.quem];const nm=q?q.nome:'?';const d=l.data.split('-');
-    return `<div class="${ro?'rowro':'swr'+(S.openId===l.id?' open':'')}" data-id="${l.id}">${ro?'':`<div class="acts"><button class="ed" data-a="editb" data-v="${l.id}" aria-label="Editar">${IC.ed}<span>Editar</span></button><button class="rm" data-a="askdel" data-v="${l.id}" aria-label="Excluir">${IC.rm}<span>Excluir</span></button></div>`}<div class="it"${ro?'':` data-a="edit" data-v="${l.id}"`}><div class="av">${esc(nm[0].toUpperCase())}</div><div class="t"><b>${esc(l.desc||CN[l.cat]||'Gasto')}</b><small>${CN[l.cat]||'Sem categoria'} · ${d[2]}/${d[1]}${l.fixo?' · todo mês':''}</small></div><div class="v">${brl(l.valor)}</div></div></div>`}).join(''):'<div class="empty">Nada lançado neste mês ainda.</div>'}
+    return `<div class="${ro?'rowro':'swr'+(S.openId===l.id?' open':'')}" data-id="${l.id}">${ro?'':`<div class="acts"><button class="ed" data-a="editb" data-v="${l.id}" aria-label="Editar">${IC.ed}<span>Editar</span></button><button class="rm" data-a="askdel" data-v="${l.id}" aria-label="Excluir">${IC.rm}<span>Excluir</span></button></div>`}<div class="it"${ro?'':` data-a="edit" data-v="${l.id}"`}><div class="av">${esc(nm[0].toUpperCase())}</div><div class="t"><b>${esc(l.desc||CN[l.cat]||'Gasto')}</b><small>${CN[l.cat]||'Sem categoria'} · ${d[2]}/${d[1]}${l.fixo?' · todo mês':''}${!l.fixo&&l.data>todayS()?' · agendado':''}</small></div><div class="v">${brl(l.valor)}</div></div></div>`}).join(''):'<div class="empty">Nada lançado neste mês ainda.</div>'}
   ${ro?'':'<button class="fab" data-a="add" aria-label="Novo gasto">+</button>'}`;
 }
 
@@ -270,9 +285,12 @@ function openAdd(l){
   <div class="lbl"><span>Categoria</span><button class="edcat" data-a="cats" data-v="add">✎ Editar categorias</button></div>
   <div class="chips" id="cc" data-c="${l?l.cat:''}">${CATS.map(([k,n])=>`<button class="${l&&l.cat===k?'on':''}" data-a="cat" data-v="${k}">${n}</button>`).join('')}</div>
   <input class="inp" id="ad" placeholder="Descrição (opcional)" autocomplete="off" value="${l?esc(l.desc||''):''}">
-  <input class="inp" id="at" type="date" value="${l?l.data:ymd(NOW)}">
+  <div class="lbl" style="margin:2px 0 8px"><span>Data do pagamento</span></div>
+  <div class="chips"><button data-a="dt" data-v="${todayS()}">Hoje</button><button data-a="dt" data-v="${addDays(todayS(),1)}">Amanhã</button><button data-a="dt" data-v="${proxPag()}">Recebimento (${proxPag().split('-').reverse().slice(0,2).join('/')})</button></div>
+  <input class="inp" id="at" type="date" value="${l?l.data:todayS()}">
+  <div class="hint" id="dh"></div>
   <div class="tg"><span>Repete todo mês (aluguel, parcela…)</span><button class="sw2${l&&l.fixo?' on':''}" id="af" data-a="fixo" aria-label="Repetir"></button></div>
-  <div class="row"><button class="btn g" data-a="close">Cancelar</button><button class="btn" data-a="save">Salvar</button></div></div>`);
+  <div class="row"><button class="btn g" data-a="close">Cancelar</button><button class="btn" data-a="save">Salvar</button></div></div>`);dh();
 }
 function openConfirm(id){
   const l=S.lanc[id];if(!l)return;
@@ -343,12 +361,13 @@ document.addEventListener('click',async e=>{
     S.ed=null;render();
     if(S.catFrom==='add')openAdd();else closeM();
   }
+  else if(a==='dt'){$('#at').value=v;dh()}
   else if(a==='rem')openRemove();
   else if(a==='start')openStart();
   else if(a==='rdel'){await del('lanc',v);openRemove()}
   else if(a==='close')closeM();
   else if(a==='cat'){document.querySelectorAll('#cc button').forEach(b=>b.classList.toggle('on',b===t));$('#cc').dataset.c=v}
-  else if(a==='fixo')t.classList.toggle('on');
+  else if(a==='fixo'){t.classList.toggle('on');dh()}
   else if(a==='save'){
     const val=num($('#av').value),cat=$('#cc').dataset.c;
     if(!(val>0)||!cat){const i=$('#av');i.classList.remove('err');void i.offsetWidth;i.classList.add('err');if(!cat)$('#cc').scrollIntoView({block:'nearest'});return}
@@ -364,7 +383,8 @@ document.addEventListener('click',async e=>{
   else if(a==='saveperfil'){const s=num($('#ps').value),ex=S.perfis[S.me]||{},d=Math.min(31,Math.max(1,parseInt($('#pd').value,10)||ex.dia||1));await put('perfis',S.me,{nome:ex.nome||S.nome,salario:s,dia:d,inicio:keepInicio(ex,d)});S.mesSet=0;await load();closeM()}
   else if(a==='sair'){S.me=null;lss('nd_me','');closeM();$('#main').innerHTML='';render()}
 });
-document.addEventListener('input',e=>{const t=e.target;if(S.ed&&t.dataset){if(t.dataset.cn!==undefined)S.ed[+t.dataset.cn].nome=t.value;if(t.dataset.ci!==undefined)S.ed[+t.dataset.ci].cor=t.value}if(t.classList&&t.classList.contains('dia')){let v=t.value.replace(/\D/g,'').slice(0,2);if(+v>31)v='31';t.value=v}if(t.classList&&t.classList.contains('mask')){const d=t.value.replace(/\D/g,'');t.value=d?brl(parseInt(d,10)/100):''}});
+document.addEventListener('change',e=>{if(e.target.id==='at')dh()});
+document.addEventListener('input',e=>{if(e.target.id==='at')dh();const t=e.target;if(S.ed&&t.dataset){if(t.dataset.cn!==undefined)S.ed[+t.dataset.cn].nome=t.value;if(t.dataset.ci!==undefined)S.ed[+t.dataset.ci].cor=t.value}if(t.classList&&t.classList.contains('dia')){let v=t.value.replace(/\D/g,'').slice(0,2);if(+v>31)v='31';t.value=v}if(t.classList&&t.classList.contains('mask')){const d=t.value.replace(/\D/g,'');t.value=d?brl(parseInt(d,10)/100):''}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('#login'))document.querySelector('[data-a=login]').click()});
 
 /* ---------- deslizar o lançamento (editar / excluir) ---------- */
