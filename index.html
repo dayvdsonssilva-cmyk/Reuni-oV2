@@ -397,6 +397,26 @@ window.addEventListener('pointercancel',swEnd);
 ['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
 document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
 
+/* ---------- campos limpos: sem sugestões/autopreenchimento do teclado ---------- */
+function hard(el){
+  if(el.type==='color'||el.type==='date')return;
+  const cap=el.id==='ln'?'words':(el.id==='ad'||el.dataset.cn!==undefined)?'sentences':'off';
+  el.setAttribute('autocomplete','off');
+  el.setAttribute('autocorrect','off');
+  el.setAttribute('autocapitalize',cap);
+  el.setAttribute('spellcheck','false');
+  el.setAttribute('enterkeyhint','done');
+  el.setAttribute('data-lpignore','true');
+  el.setAttribute('data-form-type','other');
+  el.name='x'+Math.random().toString(36).slice(2,8);
+}
+new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{
+  if(n.nodeType!==1)return;
+  if(n.matches&&n.matches('input'))hard(n);
+  if(n.querySelectorAll)n.querySelectorAll('input').forEach(hard);
+}))).observe(document.body,{childList:true,subtree:true});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'&&!e.target.closest('#login'))e.target.blur()});
+
 /* ---------- início ---------- */
 render();
 (async()=>{
